@@ -1,0 +1,316 @@
+using System;
+
+namespace heli
+{
+    class risk
+    {
+        int[] Risk = { 4, 5, 6, 4, 5, 5, 5, 4, 5, 3, 5, 3, 4 };
+        /*
+        0-горизонтальный ветер 15-19м/с
+        1-горизонтальный ветер 20-30м/с
+        2-горизонтальный ветер >30м/с
+        3-боковой ветер 7-11м/с
+        4-боковой ветер 12-22м/с
+        5- боковой ветер м/с
+        6- турбулентность
+        7-гроза
+        8- ливень
+        9- переохлажденные осадки
+        10-обледенение
+        11- снегопад или метель
+        12- снежный вихрь
+         */
+        int[] factRisk(double[] x)
+        {
+            int[] y = new int[13];
+            for (int i = 0; i < 13; i++)
+                if (x[i] == 1)
+                    y[i] = Risk[i];
+            return y;
+        }
+
+        void risktable(int[] x)
+        {
+            Console.WriteLine("         Level of risk: ");
+            int res = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                res += x[i];
+            }
+            if (res < 19)
+            {
+                Console.WriteLine("         GREEN ");
+            }
+            else if (res < 25)
+            {
+                Console.WriteLine("        YELLOW");
+            }
+            else
+            {
+                Console.WriteLine("         RED ");
+            }
+        }
+
+        public void Estimate(double[] x)
+        {
+            Console.WriteLine("         Attention! Evaluation of the current flight! ");
+            risktable(factRisk(x));
+        }
+    }
+
+    class flight
+    {
+        //double[,] extFac = null;//T,p,ro
+        //double[,] aeroChar = null;//тяга нес винта, мощность двигателя, расход топлива, 
+        double[] factors = new double[13];
+        double[] start = new double[7];
+        double ct, F, v, po, h, m, w, r, c, G, po0, delta, N0, kc, p, T, T0, hum, dW, dT, dp;
+        double Tp, Tn, Np, Nn, N, C;
+        double[] W = new double[2];//горизонтальный, боковой
+        int t;//time
+        double pst(double h)// стандартное давление на высоте h
+        {
+            double x;
+            x = -0.089094836 * Math.Pow(h, 3) + 4.254789458 * h * h - 90.000965444 * h + 759.971647310;
+            return x;
+        }
+
+        void StartConditions()
+        {// Стандарт атм: h=0; T=15; p=760
+            h = 3;//км
+            v = 225;//км,ч
+
+            Random rnd = new Random();
+            T = rnd.NextDouble() + rnd.Next(-18, 2);
+            p = pst(0) * Math.Exp(9.8 * 0.029 * h / 8.31);
+            po = 0.0473 * p / T;
+            W[0] = rnd.Next(0, 32);
+            W[1] = rnd.NextDouble() + rnd.Next(0, 32);
+            dW = 0;
+
+            double[] tmp = { T, p, po, W[0], W[1], dW };
+            start = tmp;
+
+            po0 = 0.125;
+            T0 = -4.5;
+
+            N0 = 2600;
+            kc = 680;
+            r = 21.29;
+            w = 213.26;
+            m = 6624;
+            ct = 0.018;
+            F = 80000;
+            G = 9.8 * m;
+
+            // return start;
+        }
+
+        double[] ChangeFact()
+        {
+            Random rnd = new Random();
+            double W_past = W[0];
+            double T_past = T;
+            double p_past = p;
+            T += rnd.NextDouble() + rnd.Next(-2, 3);
+            p += rnd.NextDouble() + rnd.Next(-2, 2);
+            po = 0.0473 * p / T;
+            W[0] += rnd.Next(-5, 5);
+            W[1] += rnd.Next(-5, 5);
+            dW = W_past - W[0];
+            dT = T_past - T;
+            dp = p_past - p;
+
+            double h1, h2;
+            h1 = 0.0002 * T * T * T + 0.0076 * T * T + 0.3587 * t + 4.8282;
+            h2 = -0.9701 * p * p * p + 1.7650 * p * p + 6.7059 * p + 0.3019;
+            hum = h1 + h2 / 2;// влажность
+
+            double[] x = { T, p, po, W[0], W[1], dW, dT, dp };
+            return x;
+        }
+
+        double[] ChangeChar()
+        {
+            delta = po0 / po;
+            Tn = Math.Sqrt(1 + ct * F * v * po * ct * F * v * po / (4 * G * G)); // тяга нес винта 
+            N = N0 * Math.Sqrt(1 / delta);// мощность двиг//////
+            C = kc * Math.Sqrt(T / T0) * p / pst(h);//расход топлива
+
+            double[] x = { Tn, N, C };
+            return x;
+        }
+        /* void formul()
+         {
+             //  FT = ct * F * v * po / 2;// тяга нес винта
+             Tp = 147.1;
+
+             Tn = Math.Sqrt(1 + ct * F * v * po * ct * F * v * po / (4 * G * G)); // тяга нес винта 
+             Np = (-0.000001143 * v * v + 0.000588571 * v + 0.811285714) * (-2.037037037 * h * h * h + 7.063492063 * h * h - 4.550264550 * h + 1499.682539683);
+             Nn = (G * G / (po * po * F * v) + m * F * Math.Pow(w * r, 3) + c * F * Math.Pow(v, 3)) * po / 150;//1400;
+             N = 2600;//N0 * Math.Sqrt(1 / delta);// мощность двиг//////
+             //delta = po0 / po;
+             C = kc * Math.Sqrt(T / T0) * p / pst(h);//расход топлива
+         }*/
+
+        void PossibleWeather(double[] x)
+        {
+            Random rnd = new Random();
+            //горизонтальный ветер
+            if ((x[3] >= 15) & (x[3] < 20))
+                factors[0] = 1;
+            if ((x[3] >= 20) & (x[3] < 30))
+                factors[1] = 1;
+            if (x[3] >= 30)
+                factors[2] = 1;
+
+            //боковой ветер
+            if ((x[4] >= 7) & (x[4] < 12))
+                factors[3] = 1;
+            if ((x[4] >= 12) & (x[4] < 22))
+                factors[4] = 1;
+            if (x[4] >= 22)
+                factors[5] = 1;
+
+            //гроза
+            if (x[5] >= 8)
+                factors[7] = rnd.Next(0, 1);
+
+            //турбулентность
+            if (((x[5] >= 1.5) & (x[4] >= 2)) | (factors[5] == 1))
+                factors[6] = 1;
+
+            //ливень
+            if ((x[0] >= 0) & (x[0] <= 10))
+                factors[8] = rnd.Next(0, 1);
+
+            // переохлажденные осадки
+            if ((x[0] >= -15) & (x[0] <= 0))
+                factors[9] = rnd.Next(0, 1);
+
+            //обледенение
+            if ((x[0] >= -5) & (x[0] <= 10))
+                factors[10] = rnd.Next(0, 1);
+
+            //снегопад или метель
+            if (x[0] < 0)
+                factors[11] = rnd.Next(0, 1);
+            // снежный вихрь
+            if ((factors[10] == 1) & ((x[3] > 10) | (x[4] > 10)))
+                factors[12] = 1;
+
+        }
+        /*
+               0-горизонтальный ветер 15-19м/с
+               1-горизонтальный ветер 20-30м/с
+               2-горизонтальный ветер >30м/с
+               3-боковой ветер 7-11м/с
+               4-боковой ветер 12-22м/с
+               5- боковой ветер м/с
+       6- турбулентность
+               7-гроза
+               8- ливень
+               9- переохлажденные осадки
+                10-обледенение
+       11- снегопад или метель
+       12- снежный вихрь
+        */
+
+
+        void print(double[] x, int y)
+        {
+            switch (y)
+            {
+                case 0:
+                    Console.Write("T =  ");
+                    Console.Write("{0:0.###}", x[0]);
+                    Console.Write("     p =  ");
+                    Console.Write("{0:0.###}", x[1]);
+                    Console.Write("     po =  ");
+                    Console.Write("{0:0.###}", x[2]);
+                    Console.Write("     h_W =  ");
+                    Console.Write("{0:0.###}", x[3]);
+                    Console.Write("     s_W =  ");
+                    Console.Write("{0:0.###}", x[4]);
+                    break;
+                case 1:
+                    if ((x[0] == 1) & (x[5] != 1))
+                        Console.WriteLine(" There is a high wind overboard");
+                    if ((x[1] == 1) | (x[5] == 1))
+                        Console.WriteLine(" There is a storm overboard");
+                    if (x[2] == 1)
+                        Console.WriteLine(" There is a hurricane wind overboard");
+                    if ((x[3] == 1) & (x[5] != 1) & (x[2] != 1))
+                        Console.WriteLine(" There is a side wind overboard");
+                    if ((x[4] == 1) & (x[1] != 1) & (x[2] != 1))
+                        Console.WriteLine(" There is a high side wind  overboard");
+
+                    if (x[6] == 1)
+                        Console.WriteLine(" There is a turbulence overboard");
+                    if (x[7] == 1)
+                        Console.WriteLine(" There is a thunderstorm overboard");
+                    if (x[8] == 1)
+                        Console.WriteLine(" There is a rainfall overboard");
+                    if (x[9] == 1)
+                        Console.WriteLine(" There is a cold rain overboard");
+                    if (x[10] == 1)
+                        Console.WriteLine(" There is a icing overboard");
+                    if (x[11] == 1)
+                        Console.WriteLine(" There is a snowfall overboard");
+                    if (x[12] == 1)
+                        Console.WriteLine(" there is a snowstorm overboard");
+                    break;
+                case 2:
+                    Console.Write("Tn =  ");
+                    Console.Write("{0:0.###}", x[0]);
+                    Console.Write("     N =  ");
+                    Console.Write("{0:0.###}", x[1]);
+                    Console.Write("     C =  ");
+                    Console.Write("{0:0.###}", x[2]);
+                    break;
+            }
+            Console.WriteLine();
+        }
+        public void Log(double tk)
+        {
+            StartConditions();//задаём нач условия
+            PossibleWeather(start);
+
+            risk R = new risk();
+
+            Console.WriteLine("         Hello, world! Here are our flight characteristics now:");
+            Console.WriteLine();
+            print(start, 0);
+            Console.WriteLine();
+            print(ChangeChar(), 2);
+            Console.WriteLine("         And a weathet overboatd: ");
+            print(factors, 1);
+            Console.WriteLine("         Let`s fly!");
+
+            for (int t = 1; t < tk; t++)
+            {
+                Console.Write("         The time is ");
+                Console.WriteLine(t);
+
+                PossibleWeather(ChangeFact());
+                print(ChangeFact(), 0);
+                print(ChangeChar(), 2);
+                print(factors, 1);
+                Console.WriteLine(" ");
+                R.Estimate(factors);
+                Console.WriteLine(" ");
+            }
+
+            Console.WriteLine("         Well, It was awesome! I hope we didn't crash");
+        }
+    }
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            flight F = new flight();
+            F.Log(60);
+        }
+    }
+}
