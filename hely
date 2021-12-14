@@ -1,10 +1,13 @@
 using System;
+using System.IO;
+using System.Text;
 
 namespace heli
 {
     class risk
     {
         int[] Risk = { 4, 5, 6, 4, 5, 5, 5, 4, 5, 3, 5, 3, 4 };
+
         /*
         0-горизонтальный ветер 15-19м/с
         1-горизонтальный ветер 20-30м/с
@@ -29,32 +32,32 @@ namespace heli
             return y;
         }
 
-        void risktable(int[] x)
+        void risktable(int[] x, StreamWriter sw)
         {
-            Console.WriteLine("         Level of risk: ");
+            sw.WriteLine("         Level of risk: ");
             int res = 0;
             for (int i = 0; i < 10; i++)
             {
                 res += x[i];
             }
-            if (res < 19)
+            if (res < 23)
             {
-                Console.WriteLine("         GREEN ");
+                sw.WriteLine("         GREEN ");
             }
-            else if (res < 25)
+            else if (res < 29)
             {
-                Console.WriteLine("        YELLOW");
+                sw.WriteLine("        YELLOW");
             }
             else
             {
-                Console.WriteLine("         RED ");
+                sw.WriteLine("         RED ");
             }
         }
 
-        public void Estimate(double[] x)
+        public void Estimate(double[] x, StreamWriter sw)
         {
-            Console.WriteLine("         Attention! Evaluation of the current flight! ");
-            risktable(factRisk(x));
+            sw.WriteLine("         Attention! Evaluation of the current flight! ");
+            risktable(factRisk(x), sw);
         }
     }
 
@@ -68,12 +71,20 @@ namespace heli
         double Tp, Tn, Np, Nn, N, C;
         double[] W = new double[2];//горизонтальный, боковой
         int t;//time
+        StreamWriter sw = new StreamWriter("D:\\Log6.txt", false);
+        StreamWriter dd = new StreamWriter("D:\\dd.txt", false);
+        StreamWriter d1 = new StreamWriter("D:\\d1.txt", false);
+        StreamWriter d2 = new StreamWriter("D:\\d2.txt", false);
         double pst(double h)// стандартное давление на высоте h
         {
             double x;
             x = -0.089094836 * Math.Pow(h, 3) + 4.254789458 * h * h - 90.000965444 * h + 759.971647310;
             return x;
         }
+       /* ~flight()
+        {
+            sw.Close();
+        }*/
 
         void StartConditions()
         {// Стандарт атм: h=0; T=15; p=760
@@ -83,7 +94,7 @@ namespace heli
             Random rnd = new Random();
             T = rnd.NextDouble() + rnd.Next(-18, 2);
             p = pst(0) * Math.Exp(9.8 * 0.029 * h / 8.31);
-            po = 0.0473 * p / T;
+            po = Math.Abs(0.0473 * p / T);
             W[0] = rnd.Next(0, 32);
             W[1] = rnd.NextDouble() + rnd.Next(0, 32);
             dW = 0;
@@ -102,33 +113,72 @@ namespace heli
             ct = 0.018;
             F = 80000;
             G = 9.8 * m;
-
-            // return start;
         }
 
-        double[] ChangeFact()
+
+        bool crutch(double[] x)
         {
+            if ((x[7] == 1) | (x[7] == 1))
+            {
+                return true;
+            }
+            else return false;
+        }
+
+        double[] ChangeFact(double[] x0, int d)
+        {
+
             Random rnd = new Random();
-            double W_past = W[0];
-            double T_past = T;
-            double p_past = p;
-            T += rnd.NextDouble() + rnd.Next(-2, 3);
-            p += rnd.NextDouble() + rnd.Next(-2, 2);
-            po = 0.0473 * p / T;
-            W[0] += rnd.Next(-5, 5);
-            W[1] += rnd.Next(-5, 5);
-            dW = W_past - W[0];
-            dT = T_past - T;
-            dp = p_past - p;
+            switch (d)
+            {
+                case 0:
+                    {
+                        double W_past = W[0];
+                        double T_past = T;
+                        double p_past = p;
+                        T += rnd.NextDouble() + rnd.Next(-2, 3);
+                        p += rnd.NextDouble() + rnd.Next(-2, 2);
+                        po = 0.0473 * p / T;
+                        W[0] += rnd.Next(-5, 5);
+                        W[1] += rnd.Next(-5, 5);
+                        dW = W_past - W[0];
+                        dT = T_past - T;
+                        dp = p_past - p;
 
-            double h1, h2;
-            h1 = 0.0002 * T * T * T + 0.0076 * T * T + 0.3587 * t + 4.8282;
-            h2 = -0.9701 * p * p * p + 1.7650 * p * p + 6.7059 * p + 0.3019;
-            hum = h1 + h2 / 2;// влажность
-
+                        double h1, h2;
+                        h1 = 0.0002 * T * T * T + 0.0076 * T * T + 0.3587 * t + 4.8282;
+                        h2 = -0.9701 * p * p * p + 1.7650 * p * p + 6.7059 * p + 0.3019;
+                        hum = h1 + h2 / 2;// влажность
+                        break;
+                    }
+                case 1:
+                    {
+                        W[0] -= 2 + rnd.Next(0,4);
+                        W[1] -= 2+ rnd.Next(0,4);;
+                        break;
+                    }
+            }
+            
+           
             double[] x = { T, p, po, W[0], W[1], dW, dT, dp };
             return x;
         }
+
+        
+        void crutch1()
+        {
+            Random rnd = new Random();
+            if (double.IsNaN(N))
+            {
+                N = 13557.231+rnd.NextDouble() + rnd.Next(-50, 1000);
+            }
+
+            if (double.IsNaN(C))
+            {
+                C = 330 + rnd.NextDouble() + rnd.Next(-50, 100);
+            }
+        }
+
 
         double[] ChangeChar()
         {
@@ -137,6 +187,11 @@ namespace heli
             N = N0 * Math.Sqrt(1 / delta);// мощность двиг//////
             C = kc * Math.Sqrt(T / T0) * p / pst(h);//расход топлива
 
+            crutch1();
+
+            dd.WriteLine(Tn);
+            d1.WriteLine(N);
+            d2.WriteLine(C);
             double[] x = { Tn, N, C };
             return x;
         }
@@ -216,8 +271,62 @@ namespace heli
        12- снежный вихрь
         */
 
-
         void print(double[] x, int y)
+        {
+            switch (y)
+            {
+                case 0:
+                    sw.Write("T =  ");
+                    sw.Write("{0:0.###}", x[0]);
+                    sw.Write("     p =  ");
+                    sw.Write("{0:0.###}", x[1]);
+                    sw.Write("     po =  ");
+                    sw.Write("{0:0.###}", x[2]);
+                    sw.Write("     h_W =  ");
+                    sw.Write("{0:0.###}", x[3]);
+                    sw.Write("     s_W =  ");
+                    sw.Write("{0:0.###}", x[4]);
+                    break;
+                case 1:
+                    if ((x[0] == 1) & (x[5] != 1))
+                        sw.WriteLine(" There is a high wind overboard");
+                    if ((x[1] == 1) | (x[5] == 1))
+                        sw.WriteLine(" There is a storm overboard");
+                    if (x[2] == 1)
+                        sw.WriteLine(" There is a hurricane wind overboard");
+                    if ((x[3] == 1) & (x[5] != 1) & (x[2] != 1))
+                        sw.WriteLine(" There is a side wind overboard");
+                    if ((x[4] == 1) & (x[1] != 1) & (x[2] != 1))
+                        sw.WriteLine(" There is a high side wind  overboard");
+
+                    if (x[6] == 1)
+                        sw.WriteLine(" There is a turbulence overboard");
+                    if (x[7] == 1)
+                        sw.WriteLine(" There is a thunderstorm overboard");
+                    if (x[8] == 1)
+                        sw.WriteLine(" There is a rainfall overboard");
+                    if (x[9] == 1)
+                        sw.WriteLine(" There is a cold rain overboard");
+                    if (x[10] == 1)
+                        sw.WriteLine(" There is a icing overboard");
+                    if (x[11] == 1)
+                        sw.WriteLine(" There is a snowfall overboard");
+                    if (x[12] == 1)
+                        sw.WriteLine(" there is a snowstorm overboard");
+                    break;
+                case 2:
+                    sw.Write("Tn =  ");
+                    sw.Write("{0:0.###}", x[0]);
+                    sw.Write("     N =  ");
+                    sw.Write("{0:0.###}", x[1]);
+                    sw.Write("     C =  ");
+                    sw.Write("{0:0.###}", x[2]);
+                    break;
+            }
+            sw.WriteLine();
+        }
+
+        void C_print(double[] x, int y)
         {
             switch (y)
             {
@@ -271,37 +380,56 @@ namespace heli
             }
             Console.WriteLine();
         }
+
+
+
         public void Log(double tk)
         {
             StartConditions();//задаём нач условия
+            double[] x0 = start;
             PossibleWeather(start);
-
             risk R = new risk();
 
             Console.WriteLine("         Hello, world! Here are our flight characteristics now:");
             Console.WriteLine();
+            C_print(start, 0);
+            sw.WriteLine("         Hello, world! Here are our flight characteristics now:");
             print(start, 0);
-            Console.WriteLine();
             print(ChangeChar(), 2);
-            Console.WriteLine("         And a weathet overboatd: ");
             print(factors, 1);
+            sw.WriteLine("         Let`s fly!");
+            Console.WriteLine();
             Console.WriteLine("         Let`s fly!");
-
+            Console.WriteLine();
+            Console.WriteLine("         Rather, look at the text file!");
+            Console.WriteLine();
             for (int t = 1; t < tk; t++)
             {
-                Console.Write("         The time is ");
-                Console.WriteLine(t);
+                sw.Write("         The time is ");
+                sw.WriteLine(t);
+                double[] tmp = ChangeFact(x0, 0);
+                PossibleWeather(tmp);
 
-                PossibleWeather(ChangeFact());
-                print(ChangeFact(), 0);
+                if ((t > 30) & (crutch(tmp)))
+                {
+                    tmp = ChangeFact(x0, 1);
+                }
+                print(ChangeFact(x0, 0), 0);
                 print(ChangeChar(), 2);
                 print(factors, 1);
-                Console.WriteLine(" ");
-                R.Estimate(factors);
-                Console.WriteLine(" ");
+                R.Estimate(factors, sw);
             }
-
             Console.WriteLine("         Well, It was awesome! I hope we didn't crash");
+            sw.Write("         Well, It was awesome! I hope we didn't crash");
+            cl();
+            dd.Close();
+            d1.Close();
+            d2.Close();
+        }
+        
+        void cl()
+        {
+            sw.Close();
         }
     }
 
@@ -310,7 +438,8 @@ namespace heli
         static void Main(string[] args)
         {
             flight F = new flight();
-            F.Log(60);
+           
+            F.Log(30);
         }
     }
 }
